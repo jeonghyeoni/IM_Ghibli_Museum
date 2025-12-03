@@ -1,11 +1,12 @@
 using UnityEngine;
 using System.Collections;
+using UnityEngine.Events;
 
 public class MagicTreeGrow : MonoBehaviour
 {
     public float growDuration = 2.0f; // 다 자라는데 걸리는 시간
     public AnimationCurve growCurve;  // 성장의 느낌 (그래프)
-
+    public UnityEvent onGrowComplete;
     private Vector3 targetScale;
 
     void Awake()
@@ -38,5 +39,7 @@ public class MagicTreeGrow : MonoBehaviour
         }
 
         transform.localScale = targetScale; // 최종 크기 확정
+
+        onGrowComplete?.Invoke();
     }
 }
