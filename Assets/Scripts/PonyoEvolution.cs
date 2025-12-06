@@ -15,6 +15,9 @@ public class PonyoEvolution : MonoBehaviour
     public AudioSource audioSource;
     public AudioClip eatingSound;
     public AudioClip transformSound;
+
+    [Range(0f, 1f)] // 인스펙터에서 슬라이더로 조절하기 편하게 만듦
+    public float popVolume = 0.5f; // 기본값 0.5 (절반 크기)
     public ParticleSystem smokeEffect;
 
     private Vector3 finalScale; // 원래 포뇨의 크기 저장용
@@ -74,7 +77,7 @@ public class PonyoEvolution : MonoBehaviour
         // 4. 등장 소리 재생
         if (audioSource != null && transformSound != null)
         {
-            audioSource.PlayOneShot(transformSound);
+            audioSource.PlayOneShot(transformSound, popVolume);
         }
 
         // 5. [추가됨] 크기 키우기 (Scale 0 -> 원래 크기)

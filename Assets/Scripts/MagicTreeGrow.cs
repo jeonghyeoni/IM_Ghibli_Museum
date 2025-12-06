@@ -41,5 +41,7 @@ public class MagicTreeGrow : MonoBehaviour
         transform.localScale = targetScale; // 최종 크기 확정
 
         onGrowComplete?.Invoke();
+
+        SoundManager.Instance.PlayPieceSound();
     }
 }

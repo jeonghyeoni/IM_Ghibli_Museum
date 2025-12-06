@@ -1,6 +1,6 @@
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
-using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactables; 
 
 public class WearableOutfit : MonoBehaviour
 {
@@ -10,28 +10,33 @@ public class WearableOutfit : MonoBehaviour
     
     [Header("애니메이션 설정")]
     public Animator chihiroAnimator;
-    
-    // [오류 해결] 이 변수가 빠져 있었습니다!
-    public float minMoveSpeed = 0.05f; // 움직임 감지 최소 속도
-    
-    public float animationSpeedMultiplier = 2.0f; // 애니메이션 속도 배율
-    public float smoothing = 10.0f; // 부드러운 전환 값
+    public float minMoveSpeed = 0.05f; 
+    public float animationSpeedMultiplier = 2.0f; 
+    public float smoothing = 10.0f; 
 
+    // 내부 변수들
     private XRGrabInteractable grabInteractable;
     private Rigidbody rb;
     private bool isEquipped = false;
+    private Collider[] outfitColliders; 
+    
+    private Vector3 lastPosition; 
+    private float currentVertical = 0f; 
 
-    private Vector3 lastPosition; // 이전 위치 저장용
-    private float currentVertical = 0f; // 현재 애니메이션 값
+    // [핵심] 1초 대기 타이머 변수
+    private float stopTimer = 0f;
+    private bool isSolid = false; // 현재 실체화 상태인지 확인
 
     void Awake()
     {
         grabInteractable = GetComponent<XRGrabInteractable>();
         rb = GetComponent<Rigidbody>();
         
+        // 옷의 모든 콜라이더 저장
+        outfitColliders = GetComponentsInChildren<Collider>();
+
         if (chihiroAnimator == null) chihiroAnimator = GetComponentInChildren<Animator>();
         
-        // 애니메이션 끊김 방지 강제 설정
         if (chihiroAnimator != null)
         {
             chihiroAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
@@ -55,7 +60,7 @@ public class WearableOutfit : MonoBehaviour
     {
         if (isEquipped && playerCamera != null)
         {
-            // 1. 위치 동기화
+            // 1. 위치 동기화 (카메라 따라다니기)
             Vector3 targetEuler = playerCamera.eulerAngles;
             Quaternion targetRotation = Quaternion.Euler(0, targetEuler.y, 0);
             Vector3 targetPosition = playerCamera.position + (targetRotation * wearOffset);
@@ -63,48 +68,71 @@ public class WearableOutfit : MonoBehaviour
             transform.position = targetPosition;
             transform.rotation = targetRotation;
 
-            // 2. 이동 속도 및 방향 계산 (옆걸음질 포함 버전)
-            
-            // A. 높이를 제외한 평면 이동 거리 계산
-            Vector3 currentPosFlat = new Vector3(transform.position.x, 0, transform.position.z);
+            // 2. 이동 속도 계산
+            Vector3 currentPosFlat = new Vector3(targetPosition.x, 0, targetPosition.z);
             Vector3 lastPosFlat = new Vector3(lastPosition.x, 0, lastPosition.z);
-            
             Vector3 displacement = currentPosFlat - lastPosFlat;
             float rawSpeed = displacement.magnitude / Time.deltaTime;
 
-            // B. 로컬 기준 이동 방향 계산
-            Vector3 localMove = transform.InverseTransformDirection(displacement);
-            
-            // C. 방향 결정 로직
-            // 뒤로 가는 경우(음수)가 아니면 무조건 1(앞)로 설정해 옆걸음질도 걷게 함
-            float directionSign = 1f;
-            if (localMove.z < -0.05f * Time.deltaTime) 
-            {
-                directionSign = -1f;
-            }
+            // 3. 애니메이션 처리
+            HandleAnimation(displacement, rawSpeed);
 
-            // D. 최종 입력값 계산
-            float targetInput = 0f;
-
-            // [수정] 이제 minMoveSpeed 변수가 선언되었으므로 오류가 나지 않습니다.
-            if (rawSpeed > minMoveSpeed)
-            {
-                // 방향 * 속도 * 배율
-                targetInput = directionSign * rawSpeed * animationSpeedMultiplier;
-                targetInput = Mathf.Clamp(targetInput, -1f, 1f);
-            }
-            
-            // E. 부드러운 적용 (Lerp)
-            currentVertical = Mathf.Lerp(currentVertical, targetInput, Time.deltaTime * smoothing);
-
-            if (chihiroAnimator != null)
-            {
-                chihiroAnimator.SetFloat("Vertical", currentVertical);
-            }
+            // 4. [핵심] 움직임에 따른 물리 상태 전환 (Trigger <-> Collider)
+            HandlePhysicsState(rawSpeed);
 
             lastPosition = targetPosition;
         }
     }
+
+    // ==================================================================================
+    // [핵심 로직] 움직이면 유령(Trigger), 1초 멈추면 실체(Collider)
+    // ==================================================================================
+    private void HandlePhysicsState(float currentSpeed)
+    {
+        // 움직이는 중 (속도가 0.1 이상)
+        if (currentSpeed > 0.1f)
+        {
+            stopTimer = 0f; // 타이머 초기화
+            
+            // 움직이자마자 즉시 유령 모드 (밀림 방지)
+            if (isSolid) 
+            {
+                SetCollidersTrigger(true);
+                isSolid = false;
+            }
+        }
+        // 멈춰 있음
+        else
+        {
+            stopTimer += Time.deltaTime;
+
+            // 1초 이상 멈춰 있었다면?
+            if (stopTimer >= 1.0f)
+            {
+                // 아직 유령 상태라면 -> 실체화 (잡을 수 있게 됨)
+                if (!isSolid)
+                {
+                    SetCollidersTrigger(false);
+                    isSolid = true;
+                }
+            }
+        }
+    }
+    
+    // Trigger 상태 일괄 변경 함수
+    private void SetCollidersTrigger(bool isTriggerState)
+    {
+        if (outfitColliders == null) return;
+
+        foreach (Collider col in outfitColliders)
+        {
+            if (col.isTrigger != isTriggerState)
+            {
+                col.isTrigger = isTriggerState;
+            }
+        }
+    }
+    // ==================================================================================
 
     private void OnActivate(ActivateEventArgs args)
     {
@@ -115,16 +143,17 @@ public class WearableOutfit : MonoBehaviour
             grabInteractable.interactionManager.SelectExit(selectInteractor, grabInteractable);
         }
 
-        // 부모 해제 (시뮬레이터 진동 방지)
         transform.SetParent(null);
-        
         rb.isKinematic = true; 
         isEquipped = true;
         
-        // 애니메이터 상태 전환
+        // 입자마자 유령 모드로 시작
+        SetCollidersTrigger(true);
+        isSolid = false;
+        stopTimer = 0f;
+
         if (chihiroAnimator != null) chihiroAnimator.SetBool("IsEquipped", true);
 
-        // 위치 초기화
         lastPosition = transform.position;
         currentVertical = 0f;
     }
@@ -142,6 +171,29 @@ public class WearableOutfit : MonoBehaviour
             transform.SetParent(null);
             rb.isKinematic = false;
             isEquipped = false;
+
+            // 벗었을 땐 무조건 실체화 (바닥에 굴러야 함)
+            SetCollidersTrigger(false);
+            isSolid = true;
         }
+    }
+
+    private void HandleAnimation(Vector3 displacement, float rawSpeed)
+    {
+        Vector3 localMove = transform.InverseTransformDirection(displacement);
+        
+        float directionSign = 1f;
+        if (localMove.z < -0.05f * Time.deltaTime) directionSign = -1f;
+
+        float targetInput = 0f;
+        if (rawSpeed > minMoveSpeed)
+        {
+            targetInput = directionSign * rawSpeed * animationSpeedMultiplier;
+            targetInput = Mathf.Clamp(targetInput, -1f, 1f);
+        }
+        
+        currentVertical = Mathf.Lerp(currentVertical, targetInput, Time.deltaTime * smoothing);
+
+        if (chihiroAnimator != null) chihiroAnimator.SetFloat("Vertical", currentVertical);
     }
 }

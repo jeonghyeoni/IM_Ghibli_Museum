@@ -52,8 +52,11 @@ public class PonyoDining : MonoBehaviour
             ponyoAnimator.SetTrigger("Happy");
 
             // 오르골 조각 등장
-            if (musicBoxPiece != null) musicBoxPiece.SetActive(true);
-
+            if (musicBoxPiece != null)
+            {
+                musicBoxPiece.SetActive(true);
+                SoundManager.Instance.PlayPieceSound();
+            }
             // 소리 재생
             if (audioSource && happySound) audioSource.PlayOneShot(happySound);
 
