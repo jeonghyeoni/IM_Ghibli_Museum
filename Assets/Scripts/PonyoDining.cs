@@ -1,7 +1,8 @@
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
-using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactables; // Unity 6 / XRI 3.x
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
+using System.Collections; 
 
 public class PonyoDining : MonoBehaviour
 {
@@ -9,10 +10,18 @@ public class PonyoDining : MonoBehaviour
     public Animator ponyoAnimator;
     public GameObject musicBoxPiece; // 보상 (오르골 조각)
 
+    [Header("성공 패널 설정 (햄 라멘)")]
+    public GameObject successPanel;      // ✨ 추가: 오르골 조각 발견 패널
+    public float successPanelDelay = 1.5f; // ✨ 추가: 조각 등장 후 패널이 뜰 때까지 대기 시간
+
+    [Header("힌트 패널 설정 (그냥 라멘)")]
+    public PanelPopupBehavior hintPanel; // 힌트 패널 스크립트
+    public float hintDelay = 2.0f;       // 거절 후 패널이 뜰 때까지 대기 시간
+
     [Header("오디오 (선택)")]
     public AudioSource audioSource;
-    public AudioClip happySound;  // "우와!"
-    public AudioClip refuseSound; // "흥! 햄 줘!"
+    public AudioClip happySound;  
+    public AudioClip refuseSound; 
 
     private XRSocketInteractor socketInteractor;
 
@@ -23,7 +32,6 @@ public class PonyoDining : MonoBehaviour
 
     void OnEnable()
     {
-        // 소켓에 물건이 들어오면 CheckRamen 함수 실행
         socketInteractor.selectEntered.AddListener(CheckRamen);
     }
 
@@ -32,86 +40,94 @@ public class PonyoDining : MonoBehaviour
         socketInteractor.selectEntered.RemoveListener(CheckRamen);
     }
 
-    // 소켓에 들어온 물건(args.interactableObject)을 검사
     private void CheckRamen(SelectEnterEventArgs args)
     {
-        // 1. 들어온 물건에서 RamenStatus 스크립트 찾기
         GameObject ramenObj = args.interactableObject.transform.gameObject;
         RamenStatus ramenStatus = ramenObj.GetComponent<RamenStatus>();
 
-        // 라면이 아니면 무시
         if (ramenStatus == null) return;
 
-        // 2. 햄이 있는지 검사
+        // 1. 햄이 있는지 검사
         if (ramenStatus.HasHam())
         {
-            // [성공] 햄이 있음!
+            // [성공] 
             Debug.Log("햄 라면이다! 맛있다!");
-
-            // 기뻐하는 애니메이션
             ponyoAnimator.SetTrigger("Happy");
 
             // 오르골 조각 등장
             if (musicBoxPiece != null)
             {
                 musicBoxPiece.SetActive(true);
-                SoundManager.Instance.PlayPieceSound();
             }
-            // 소리 재생
+
+            // 효과음 재생
             if (audioSource && happySound) audioSource.PlayOneShot(happySound);
 
-            // (옵션) 라면을 더 이상 못 꺼내게 하려면 소켓의 Interaction Layer를 잠가버릴 수도 있음
+            // ✨ 추가: 딜레이 후 성공 패널 띄우기
+            StartCoroutine(ShowSuccessPanelRoutine());
         }
         else
         {
-            // [실패] 햄이 없음...
+            // [실패] 햄이 없음
             Debug.Log("햄이 없잖아! 싫어!");
 
-            // 도리도리 애니메이션
+            // 거절 애니메이션 및 소리
             ponyoAnimator.SetTrigger("Refuse");
-
-            // 소리 재생
             if (audioSource && refuseSound) audioSource.PlayOneShot(refuseSound);
 
-            // [중요] 거부했으니 소켓에서 라면을 퉤! 하고 뱉어내게 만들기
-            // (안 그러면 햄 없는 라면이 계속 꽂혀 있음)
+            // 딜레이 후 힌트 패널 띄우기
+            StartCoroutine(ShowHintRoutine());
+
+            // 라면 뱉어내기
             StartCoroutine(EjectRamen(args.interactableObject));
         }
     }
 
-    // 라면 뱉어내기 코루틴
-    private System.Collections.IEnumerator EjectRamen(IXRSelectInteractable ramen)
+    // ✨ 추가: 성공 패널 띄우는 코루틴
+    IEnumerator ShowSuccessPanelRoutine()
     {
-        // 1. 애니메이션 보여줄 시간 (도리도리 하는 동안 대기)
-        yield return new WaitForSeconds(3.0f); // 0.5초는 너무 짧을 수 있어서 늘림
+        // 설정한 시간(successPanelDelay)만큼 대기
+        yield return new WaitForSeconds(successPanelDelay);
 
-        // 2. 강제로 잡기 해제 (뱉기)
+        // 패널 활성화
+        if (successPanel != null)
+        {
+            successPanel.SetActive(true);
+        }
+    }
+
+    // 힌트 패널 띄우는 코루틴
+    IEnumerator ShowHintRoutine()
+    {
+        yield return new WaitForSeconds(hintDelay);
+
+        if (hintPanel != null)
+        {
+            hintPanel.ShowPanel();
+        }
+    }
+
+    private IEnumerator EjectRamen(IXRSelectInteractable ramen)
+    {
+        yield return new WaitForSeconds(3.0f); 
+
         socketInteractor.interactionManager.SelectExit(socketInteractor, ramen);
-
-        // [핵심 1] 소켓을 잠시 끕니다. (안 그러면 바로 다시 잡아버림)
         socketInteractor.enabled = false;
 
-        // [핵심 2] 라면을 플레이어 쪽으로 툭 밀어냅니다.
-        // IXRSelectInteractable 인터페이스에서 실제 게임 오브젝트를 가져옴
         Transform ramenTransform = ramen.transform;
         Rigidbody ramenRb = ramenTransform.GetComponent<Rigidbody>();
 
         if (ramenRb != null)
         {
-            // 물리 힘을 초기화 (혹시 멈춰있을까봐)
-            ramenRb.linearVelocity = Vector3.zero; // Unity 6에서는 velocity 대신 linearVelocity 권장
+            // Unity 6: linearVelocity / Unity 2022 이하: velocity
+            ramenRb.linearVelocity = Vector3.zero; 
             ramenRb.angularVelocity = Vector3.zero;
 
-            // 소켓의 앞쪽(Forward)이나 위쪽(Up)으로 튕겨나가게 힘을 줌
-            // 힘의 방향과 세기(2.0f)는 상황에 맞춰 조절하세요.
             Vector3 ejectForce = (socketInteractor.transform.forward + Vector3.up).normalized * 1.5f;
             ramenRb.AddForce(ejectForce, ForceMode.Impulse);
         }
 
-        // 3. 소켓이 라면을 다시 잡지 않도록 2초 정도 쿨타임을 가짐
         yield return new WaitForSeconds(2.0f);
-
-        // 4. 소켓 다시 켜기 (이제 다시 넣을 수 있음)
         socketInteractor.enabled = true;
     }
 }
