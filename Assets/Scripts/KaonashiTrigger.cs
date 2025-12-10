@@ -1,5 +1,5 @@
 using UnityEngine;
-using System.Collections; // Coroutine 사용을 위해 추가
+using System.Collections; 
 
 public class KaonashiTrigger : MonoBehaviour
 {
@@ -7,9 +7,15 @@ public class KaonashiTrigger : MonoBehaviour
     public Animator boxAnimator; // 상자 애니메이터
     public GameObject musicBoxPiece; // 상자 안의 오르골 조각
     
-    [Header("UI 및 연출 설정")]
-    public GameObject messagePanel;  // ✨ 추가: 띄울 안내 패널
-    public float openDelay = 1.5f;   // ✨ 추가: 상자가 다 열릴 때까지 기다릴 시간
+    [Header("UI 패널 설정")]
+    [Tooltip("예: 오르골 부품 발견 패널")]
+    public GameObject itemPanel; 
+
+    [Tooltip("예: 잘했습니다! 변장 해제 안내 패널")]
+    public PanelPopupBehavior guidePanel; // ✨ 추가: 두 번째 패널
+
+    [Header("연출 설정")]
+    public float openDelay = 1.5f;   // 상자가 다 열릴 때까지 기다릴 시간
 
     [Header("발판 움직임 설정")]
     public Transform plateModel; 
@@ -19,7 +25,7 @@ public class KaonashiTrigger : MonoBehaviour
     [Header("효과음")]
     public AudioSource audioSource;
     public AudioClip pressSound;   // 발판 밟는 소리
-    public AudioClip boxOpenSound; // ✨ 추가: 상자 열리는 소리
+    public AudioClip boxOpenSound; // 상자 열리는 소리
 
     // 내부 변수
     private bool isOpened = false; 
@@ -34,9 +40,8 @@ public class KaonashiTrigger : MonoBehaviour
             targetLocalPos = initialLocalPos;
         }
         
-        // 시작할 때 아이템과 패널은 숨겨둡니다 (안전을 위해)
+        // 시작할 때 아이템은 숨겨둡니다
         if (musicBoxPiece != null) musicBoxPiece.SetActive(false);
-        if (messagePanel != null) messagePanel.SetActive(false);
     }
 
     void Update()
@@ -54,7 +59,6 @@ public class KaonashiTrigger : MonoBehaviour
             // 발판 내리기
             targetLocalPos = initialLocalPos - new Vector3(0, pressDepth, 0);
 
-            // 발판 소리 재생
             if (audioSource != null && pressSound != null)
             {
                 audioSource.PlayOneShot(pressSound);
@@ -87,20 +91,19 @@ public class KaonashiTrigger : MonoBehaviour
             boxAnimator.SetTrigger("Open");
         }
 
-        // 2. ✨ 추가: 상자 열리는 효과음 재생
+        // 2. 상자 열리는 효과음 재생
         if (audioSource != null && boxOpenSound != null)
         {
             audioSource.PlayOneShot(boxOpenSound);
         }
 
-        // 3. 지연 후 아이템/패널 등장 (코루틴 시작)
+        // 3. 지연 후 아이템/패널 2개 등장 (코루틴 시작)
         StartCoroutine(ShowRewardRoutine());
     }
 
-    // ✨ 추가: 애니메이션 시간만큼 기다렸다가 보상을 보여주는 코루틴
     IEnumerator ShowRewardRoutine()
     {
-        // 상자 문이 열리는 시간만큼 대기 (Inspector에서 조절 가능)
+        // 상자 문이 열리는 시간만큼 대기
         yield return new WaitForSeconds(openDelay);
 
         // 오르골 조각 등장
@@ -109,10 +112,16 @@ public class KaonashiTrigger : MonoBehaviour
             musicBoxPiece.SetActive(true);
         }
 
-        // 안내 패널 등장
-        if (messagePanel != null)
+        // ✨ 패널 1: 아이템 발견 (You found a Music Box Part!)
+        if (itemPanel != null)
         {
-            messagePanel.SetActive(true);
+            itemPanel.SetActive(true);
+        }
+
+        // ✨ 패널 2: 가이드 안내 (Well Done! Remove Disguise...)
+        if (guidePanel != null)
+        {
+            guidePanel.ShowPanel();
         }
     }
 }
